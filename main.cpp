@@ -9,6 +9,17 @@ int main(){
   git_revwalk* walker = NULL;
   git_commit* commit = NULL;
 
+  int maxX, maxY;
+
+  getmaxyx(stdscr, maxY, maxX);
+
+  WINDOW* win = newwin(maxY, maxX, 1, 1);
+  refresh();
+  box(win, 0, 0);
+
+  mvwprintw(win, 0, 1, "Commit History");
+  wrefresh(win);
+
 
   int error = git_repository_open(&repo, "/Users/anshul/interviewer/");
 
@@ -32,11 +43,17 @@ int main(){
 
   git_oid oid;
 
+  int commit_y_coordinate = 1;
+
   while(git_revwalk_next(&oid, walker) == 0){
+    
     if (git_commit_lookup(&commit, repo, &oid) == 0){
       const char* message = git_commit_message(commit);
-      printw("message: %s", message);
+      mvwprintw(win, commit_y_coordinate, 1, "message: %s", message);
+      wrefresh(win);
     }
+    
+    commit_y_coordinate++;
 
     git_commit_free(commit);
   }
