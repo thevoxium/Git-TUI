@@ -73,10 +73,13 @@ int main(){
   
   int starting_line = 0;
   int lines_to_display = commit_window_size-2;
-
+  
+  int cursor_position = 1;
 
   while(1){
-
+    
+    cursor_position = max(min(cursor_position, commit_window_size-2), 1);
+    starting_line = max(min(starting_line, commit_window_size-2), 0);
     werase(win);
     box(win, 0, 0);
     mvwprintw(win, 0, 1, "Commit History");
@@ -85,20 +88,34 @@ int main(){
       mvwprintw(win, i-starting_line+1, 1, "%s", commit_message[i]);
       y_coordinate_commit++;
     }
+
+    mvwchgat(win, cursor_position, 1, -1, A_REVERSE, 0, NULL);
+
     wrefresh(win);
 
     int ch = getch();
     if (ch == 'q'){
       break;
-    }else if(ch ==  KEY_DOWN){
-      if (starting_line+lines_to_display < commit_message_count) starting_line++;
-    }else if (ch == KEY_UP){
-      if (starting_line > 0) starting_line--;
+    }else if(ch ==  KEY_DOWN || ch == 'k'){
+      if (starting_line+lines_to_display < commit_message_count){
+        cursor_position++;
+        if(cursor_position > lines_to_display){
+          cursor_position--;
+          starting_line++;
+        } 
+      }
+    }else if (ch == KEY_UP || ch == 'j'){
+      if (cursor_position > 0){
+        cursor_position--;
+        if(cursor_position <= 0){
+          starting_line--;
+        }
+      } 
     }
 
   }
   
-    for (int i=0; i<commit_message_count; i++){
+  for (int i=0; i<commit_message_count; i++){
     free(commit_message[i]);
   }
 
