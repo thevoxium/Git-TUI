@@ -69,14 +69,15 @@ int main() {
     int info_window_size = maxY - commit_window_size - 3;  // Bottom window takes remaining space
 
     // Create main windows
-    WINDOW* win = newwin(commit_window_size, maxX - 2, 1, 1);
-    WINDOW* commit_info_window = newwin(info_window_size, maxX - 2, commit_window_size + 2, 1);
+    WINDOW* win = newwin(commit_window_size, maxX/2 - 2, 1, 1);
+    WINDOW* commit_info_window = newwin(info_window_size, maxX/2 - 2, commit_window_size + 2, 1);
     WINDOW* status_bar = newwin(1, maxX, maxY - 1, 0);
+    WINDOW* files_changed = newwin(maxY/3, maxX/2-2, 1, maxX/2);
 
     // Enable scrolling for windows
     scrollok(win, TRUE);
     scrollok(commit_info_window, TRUE);
-
+    scrollok(files_changed, TRUE);
     refresh();
 
     // Draw windows with borders and titles
@@ -91,6 +92,13 @@ int main() {
     mvwprintw(commit_info_window, 0, 2, "[ Commit Details ]");
     wattroff(commit_info_window, COLOR_PAIR(1));
     wrefresh(commit_info_window);
+
+    box(files_changed, 0, 0);
+    wattron(files_changed, COLOR_PAIR(1));
+    mvwprintw(files_changed, 0, 2, "[ Files Changed ]");
+    wattroff(files_changed, COLOR_PAIR(1));
+    wrefresh(files_changed);
+
 
     // Open repository and initialize walker
     int error = git_repository_open(&repo, "/Users/anshul/interviewer/");
