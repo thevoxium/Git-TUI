@@ -73,8 +73,9 @@ int main() {
     WINDOW* commit_info_window = newwin(info_window_size, maxX/2 - 2, commit_window_size + 2, 1);
     WINDOW* status_bar = newwin(1, maxX, maxY - 1, 0);
     WINDOW* files_changed = newwin(maxY/3, maxX/2-2, 1, maxX/2);
-
+    WINDOW* diff_window = newwin(2*maxY/3-3, maxX/2-2, maxY/3+2, maxX/2);
     // Enable scrolling for windows
+    scrollok(diff_window, TRUE);
     scrollok(win, TRUE);
     scrollok(commit_info_window, TRUE);
     scrollok(files_changed, TRUE);
@@ -98,6 +99,12 @@ int main() {
     mvwprintw(files_changed, 0, 2, "[ Files Changed ]");
     wattroff(files_changed, COLOR_PAIR(1));
     wrefresh(files_changed);
+
+    box(diff_window, 0, 0);
+    wattron(diff_window, COLOR_PAIR(1));
+    mvwprintw(diff_window, 0, 2, "[ Git Diff ]");
+    wattroff(diff_window, COLOR_PAIR(1));
+    wrefresh(diff_window);
 
 
     // Open repository and initialize walker
