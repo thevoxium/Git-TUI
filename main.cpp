@@ -20,6 +20,49 @@ struct CommitInfo {
     time_t commit_time;
 };
 
+struct DiffContent {
+    vector<string> lines;
+    int starting_line;
+    int cursor_position;
+    int lines_to_display;
+};
+
+
+void print_usage(const char* program_name) {
+    fprintf(stderr, "Usage: %s <repository_path>\n", program_name);
+    fprintf(stderr, "Example: %s /path/to/git/repo\n", program_name);
+}
+
+// Callback function to collect diff content
+int diff_line_callback(const git_diff_delta *delta, const git_diff_hunk *hunk, 
+                      const git_diff_line *line, void *payload) {
+    vector<string>* diff_lines = static_cast<vector<string>*>(payload);
+    
+    char prefix;
+    switch (line->origin) {
+        case GIT_DIFF_LINE_ADDITION: prefix = '+'; break;
+        case GIT_DIFF_LINE_DELETION: prefix = '-'; break;
+        case GIT_DIFF_LINE_CONTEXT: prefix = ' '; break;
+        case GIT_DIFF_LINE_FILE_HDR: prefix = 'F'; break;
+        case GIT_DIFF_LINE_HUNK_HDR: prefix = 'H'; break;
+        default: prefix = ' '; break;
+    }
+    
+    string diff_line;
+    if (prefix == 'F' || prefix == 'H') {
+        diff_line = string(line->content, line->content_len);
+    } else {
+        diff_line = prefix + string(line->content, line->content_len);
+    }
+    
+    // Remove trailing newlines
+    if (!diff_line.empty() && diff_line.back() == '\n') {
+        diff_line.pop_back();
+    }
+    
+    diff_lines->push_back(diff_line);
+    return 0;
+}
 // Helper function to format timestamp
 string format_time(time_t timestamp) {
     struct tm* timeinfo = localtime(&timestamp);
@@ -40,7 +83,15 @@ void draw_horizontal_line(WINDOW* win, int y, int x, int width, char ch = '-') {
     mvwhline(win, y, x, ch, width);
 }
 
-int main() {
+int main(int argc, char* argv[]) {
+
+    if (argc != 2) {
+        print_usage(argv[0]);
+        return 1;
+    }
+
+    // Get repository path from command line
+    const char* repo_path = argv[1];
     // Initialize ncurses
     initscr();
     start_color();
@@ -108,7 +159,7 @@ int main() {
 
 
     // Open repository and initialize walker
-    int error = git_repository_open(&repo, "/Users/anshul/interviewer/");
+    int error = git_repository_open(&repo, repo_path);
     if (error < 0) {
         const git_error* e = git_error_last();
         mvwprintw(status_bar, 0, 0, "Error: %s", e->message);
@@ -158,6 +209,11 @@ int main() {
     int files_changed_lines_to_display = maxY/3-2;
     int window_flag = 0;
 
+    DiffContent diff_content;
+    diff_content.starting_line = 0;
+    diff_content.cursor_position = 1;
+    diff_content.lines_to_display = 2 * maxY/3 - 5;
+    string current_diff_file = "";  // Track currently displayed diff file
 
     vector<string> file_changed_list;
     // Main program loop
@@ -340,19 +396,155 @@ int main() {
         wattroff(files_changed, COLOR_PAIR(1));
         wrefresh(files_changed);
 
+
+
+        if (window_flag == 1 && !file_changed_list.empty()) {
+            string selected_file = file_changed_list[files_starting_line + files_cursor_position - 1];
+            string file_path = selected_file.substr(4);  // Remove the status prefix [A]/[M]/[D]
+            
+            // Only update diff if we've selected a different file
+            if (file_path != current_diff_file) {
+                current_diff_file = file_path;
+                diff_content.lines.clear();
+                diff_content.starting_line = 0;
+                diff_content.cursor_position = 1;
+                
+                git_commit* current_commit = NULL;
+                git_commit* parent_commit = NULL;
+                git_tree* current_tree = NULL;
+                git_tree* parent_tree = NULL;
+                git_diff* diff = NULL;
+                
+                // Get current commit
+                git_oid current_oid;
+                git_oid_fromstr(&current_oid, commitList[commit_info_window_count].commit_id.c_str());
+                git_commit_lookup(&current_commit, repo, &current_oid);
+                
+                if (current_commit) {
+                    git_commit_tree(&current_tree, current_commit);
+                    
+                    // Set up diff options to filter for the selected file
+                    git_diff_options diff_opts = GIT_DIFF_OPTIONS_INIT;
+                    git_strarray pathspec = {0};
+                    const char* paths[] = { file_path.c_str() };
+                    pathspec.strings = const_cast<char**>(paths);
+                    pathspec.count = 1;
+                    diff_opts.pathspec = pathspec;
+                    diff_opts.context_lines = 3;  // Number of context lines around changes
+                    
+                    if (git_commit_parentcount(current_commit) > 0) {
+                        git_commit_parent(&parent_commit, current_commit, 0);
+                        git_commit_tree(&parent_tree, parent_commit);
+                        
+                        // Generate diff for specific file
+                        git_diff_tree_to_tree(&diff, repo, parent_tree, current_tree, &diff_opts);
+                    } else {
+                        // For initial commit, compare with empty tree
+                        git_diff_tree_to_tree(&diff, repo, NULL, current_tree, &diff_opts);
+                    }
+                    
+                    if (diff) {
+                        // Add file header
+                        diff_content.lines.push_back("diff --git a/" + file_path + " b/" + file_path);
+                        
+                        // Collect diff content
+                        git_diff_print(diff, GIT_DIFF_FORMAT_PATCH, diff_line_callback, &diff_content.lines);
+                    }
+                }
+                
+                // Cleanup
+                if (diff) git_diff_free(diff);
+                if (current_tree) git_tree_free(current_tree);
+                if (parent_tree) git_tree_free(parent_tree);
+                if (current_commit) git_commit_free(current_commit);
+                if (parent_commit) git_commit_free(parent_commit);
+            }
+        }
+
+        werase(diff_window);
+        box(diff_window, 0, 0);
+        wattron(diff_window, COLOR_PAIR(1));
+        mvwprintw(diff_window, 0, 2, "[ Git Diff: %s ]", current_diff_file.c_str());
+        wattroff(diff_window, COLOR_PAIR(1));
+
+        // Add padding at the top
+        int content_start_y = 2;  // Start content with 1 line padding after title
+        int left_padding = 3;     // Increase left padding from 2 to 3
+        
+        // Calculate available lines considering padding
+        diff_content.lines_to_display = (2 * maxY/3 - 6);  // Reduce by 1 to prevent overlap with bottom border
+
+        // Display diff content with scrolling and color coding
+        for (int i = diff_content.starting_line; 
+             i < diff_content.starting_line + diff_content.lines_to_display && i < diff_content.lines.size(); 
+             i++) {
+            if (!diff_content.lines[i].empty()) {
+                char first_char = diff_content.lines[i][0];
+                switch (first_char) {
+                    case '+':
+                        wattron(diff_window, COLOR_PAIR(1));  // Green for additions
+                        break;
+                    case '-':
+                        wattron(diff_window, COLOR_PAIR(2));  // Red for deletions
+                        break;
+                    case 'F':
+                    case 'H':
+                        wattron(diff_window, COLOR_PAIR(3));  // Yellow for headers
+                        break;
+                }
+            }
+            
+            // Calculate y position with padding
+            int current_y = content_start_y + (i - diff_content.starting_line);
+            
+            // Clear the entire line first to prevent character overlap
+            wmove(diff_window, current_y, 1);
+            wclrtoeol(diff_window);
+            
+            // Print the line with left padding
+            mvwprintw(diff_window, current_y, left_padding, "%s", 
+                     diff_content.lines[i].c_str());
+            
+            wattroff(diff_window, COLOR_PAIR(1));
+            wattroff(diff_window, COLOR_PAIR(2));
+            wattroff(diff_window, COLOR_PAIR(3));
+
+        // Display diff content
+      }
+
+
+        if (window_flag == 2 && !diff_content.lines.empty()) {
+            mvwchgat(diff_window, content_start_y + diff_content.cursor_position - 1, 
+                    1, maxX/2 - 2, A_REVERSE, 2, NULL);
+        }
+
+        // Redraw box to ensure clean borders
+        box(diff_window, 0, 0);
+        wattron(diff_window, COLOR_PAIR(1));
+        mvwprintw(diff_window, 0, 2, "[ Git Diff: %s ]", current_diff_file.c_str());
+        wattroff(diff_window, COLOR_PAIR(1));
+
+        wrefresh(diff_window);
+
+
+
        // Handle keyboard input
         int ch = getch();
         
-        if(ch == '\t'){
-          window_flag++;
-          if(window_flag > 1) window_flag = 0;
-          if (window_flag == 1){
-            files_starting_line = 0;
-            files_cursor_position = 1;
-            files_changed_lines_to_display = maxY/3-2;
-          }
+                
+        if (ch == '\t') {
+            window_flag++;
+            if (window_flag > 2) window_flag = 0;
+            
+            // Reset cursor positions when switching windows
+            if (window_flag == 1) {
+                files_starting_line = 0;
+                files_cursor_position = 1;
+            } else if (window_flag == 2) {
+                diff_content.starting_line = 0;
+                diff_content.cursor_position = 1;
+            }
         }
-
         
         if (ch == 'q') {
             break;
@@ -374,6 +566,14 @@ int main() {
                     files_starting_line++;
                 }
             }
+            else if (window_flag == 2 && !diff_content.lines.empty()) {
+                if (diff_content.cursor_position < diff_content.lines_to_display && 
+                    diff_content.starting_line + diff_content.cursor_position < diff_content.lines.size()) {
+                    diff_content.cursor_position++;
+                } else if (diff_content.starting_line + diff_content.lines_to_display < diff_content.lines.size()) {
+                    diff_content.starting_line++;
+                }
+            }
         } else if (ch == KEY_UP || ch == 'j') {
             if (window_flag == 0) {
                 if (commit_info_window_count > 0) {
@@ -389,6 +589,14 @@ int main() {
                     files_cursor_position--;
                 } else if (files_starting_line > 0) {
                     files_starting_line--;
+                }
+            }
+
+            else if (window_flag == 2) {
+                if (diff_content.cursor_position > 1) {
+                    diff_content.cursor_position--;
+                } else if (diff_content.starting_line > 0) {
+                    diff_content.starting_line--;
                 }
             }
         }
