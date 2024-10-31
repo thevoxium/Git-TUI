@@ -218,7 +218,93 @@ int main() {
         // Refresh windows
         wrefresh(commit_info_window);
         wrefresh(win);
+        
+        
+                // code for files Changed
+        werase(files_changed);
+        box(files_changed, 0, 0);
+        wattron(files_changed, COLOR_PAIR(1));
+        mvwprintw(files_changed, 0, 2, "[ Files Changed ]");
+        wattroff(files_changed, COLOR_PAIR(1));
 
+        git_commit* current_commit = NULL;
+        git_commit* parent_commit = NULL;
+        git_tree* current_tree = NULL;
+        git_tree* parent_tree = NULL;
+        git_diff* diff = NULL;
+
+        // Get current commit
+        git_oid current_oid;
+        git_oid_fromstr(&current_oid, commitList[commit_info_window_count].commit_id.c_str());
+        error = git_commit_lookup(&current_commit, repo, &current_oid);
+
+        if (error == 0) {
+            // Get current commit tree
+            error = git_commit_tree(&current_tree, current_commit);
+            
+            // Get parent commit (if any)
+            if (git_commit_parentcount(current_commit) > 0) {
+                error = git_commit_parent(&parent_commit, current_commit, 0);
+                if (error == 0) {
+                    error = git_commit_tree(&parent_tree, parent_commit);
+                    
+                    // Compare trees
+                    if (error == 0) {
+                        error = git_diff_tree_to_tree(&diff, repo, parent_tree, current_tree, NULL);
+                        
+                        if (error == 0) {
+                            vector<string> file_changed_list;
+                            size_t num_deltas = git_diff_num_deltas(diff);
+                            
+                            for (size_t i = 0; i < num_deltas; ++i) {
+                                const git_diff_delta* delta = git_diff_get_delta(diff, i);
+                                string status;
+                                switch (delta->status) {
+                                    case GIT_DELTA_ADDED: status = "[A] "; break;
+                                    case GIT_DELTA_MODIFIED: status = "[M] "; break;
+                                    case GIT_DELTA_DELETED: status = "[D] "; break;
+                                    default: status = "[?] "; break;
+                                }
+                                file_changed_list.push_back(status + delta->new_file.path);
+                            }
+                            
+                            // Display files
+                            int current_y_files_changed = 1;
+                            for (const auto& s : file_changed_list) {
+                                mvwprintw(files_changed, current_y_files_changed++, 2, "%s", s.c_str());
+                            }
+                        }
+                    }
+                }
+            } else {
+                // For initial commit, show all files as added
+                error = git_diff_tree_to_tree(&diff, repo, NULL, current_tree, NULL);
+                if (error == 0) {
+                    vector<string> file_changed_list;
+                    size_t num_deltas = git_diff_num_deltas(diff);
+                    for (size_t i = 0; i < num_deltas; ++i) {
+                        const git_diff_delta* delta = git_diff_get_delta(diff, i);
+                        file_changed_list.push_back("[A] " + string(delta->new_file.path));
+                    }
+                    
+                    int current_y_files_changed = 1;
+                    for (const auto& s : file_changed_list) {
+                        mvwprintw(files_changed, current_y_files_changed++, 2, "%s", s.c_str());
+                    }
+                }
+            }
+        }
+
+        // Cleanup
+        if (diff) git_diff_free(diff);
+        if (current_tree) git_tree_free(current_tree);
+        if (parent_tree) git_tree_free(parent_tree);
+        if (current_commit) git_commit_free(current_commit);
+        if (parent_commit) git_commit_free(parent_commit);
+
+        wrefresh(files_changed);
+
+        
         // Handle keyboard input
         int ch = getch();
         if (ch == 'q') {
