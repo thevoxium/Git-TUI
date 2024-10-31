@@ -145,6 +145,8 @@ int main() {
     wattroff(status_bar, COLOR_PAIR(2));
     wrefresh(status_bar);
 
+
+    int window_flag = 0;
     // Main program loop
     while (1) {
         cursor_position = max(min(cursor_position, commit_window_size - 2), 1);
@@ -164,8 +166,9 @@ int main() {
         }
 
         // Highlight selected commit
-        mvwchgat(win, cursor_position, 1, maxX - 4, A_REVERSE, 2, NULL);
-        
+        if (window_flag == 0){
+          mvwchgat(win, cursor_position, 1, maxX - 4, A_REVERSE, 2, NULL);
+        } 
         // Refresh commit info window
         werase(commit_info_window);
         box(commit_info_window, 0, 0);
@@ -273,6 +276,7 @@ int main() {
                             for (const auto& s : file_changed_list) {
                                 mvwprintw(files_changed, current_y_files_changed++, 2, "%s", s.c_str());
                             }
+
                         }
                     }
                 }
@@ -301,12 +305,24 @@ int main() {
         if (parent_tree) git_tree_free(parent_tree);
         if (current_commit) git_commit_free(current_commit);
         if (parent_commit) git_commit_free(parent_commit);
+        
+        if (window_flag == 1) {
+            mvwchgat(files_changed, 1, 1, maxX/2 - 3, A_REVERSE, 2, NULL);
+        
+        }
 
+        box(files_changed, 0, 0);
         wrefresh(files_changed);
 
         
         // Handle keyboard input
         int ch = getch();
+        
+        if(ch == '\t'){
+          window_flag++;
+          if(window_flag > 1) window_flag = 0;
+        }
+
         if (ch == 'q') {
             break;
         } else if (ch == KEY_DOWN || ch == 'k') {
