@@ -18,6 +18,7 @@ struct CommitInfo {
     string email;
     string commit_id;
     time_t commit_time;
+    vector<string> changed_files;  // Added to store changed files
 };
 
 // Helper function to format timestamp
@@ -40,6 +41,50 @@ void draw_horizontal_line(WINDOW* win, int y, int x, int width, char ch = '-') {
     mvwhline(win, y, x, ch, width);
 }
 
+// Callback function for diff file iteration
+int diff_file_cb(const git_diff_delta* delta, float progress, void* payload) {
+    vector<string>* files = static_cast<vector<string>*>(payload);
+    files->push_back(delta->new_file.path);
+    return 0;
+}
+
+// Function to get changed files for a commit
+vector<string> get_changed_files(git_repository* repo, const git_commit* commit) {
+    vector<string> changed_files;
+    git_tree* commit_tree = nullptr;
+    git_commit* parent = nullptr;
+    git_tree* parent_tree = nullptr;
+    git_diff* diff = nullptr;
+    git_diff_options diffopts = GIT_DIFF_OPTIONS_INIT;
+
+    // Get the commit tree
+    if (git_commit_tree(&commit_tree, commit) != 0) {
+        return changed_files;
+    }
+
+    // Get the parent commit
+    if (git_commit_parent(&parent, commit, 0) == 0) {
+        // Get parent tree
+        if (git_commit_tree(&parent_tree, parent) == 0) {
+            // Get diff between parent and commit
+            if (git_diff_tree_to_tree(&diff, repo, parent_tree, commit_tree, &diffopts) == 0) {
+                git_diff_foreach(diff, diff_file_cb, nullptr, nullptr, nullptr, &changed_files);
+            }
+            git_tree_free(parent_tree);
+        }
+        git_commit_free(parent);
+    } else {
+        // For first commit, get all files
+        if (git_diff_tree_to_tree(&diff, repo, nullptr, commit_tree, &diffopts) == 0) {
+            git_diff_foreach(diff, diff_file_cb, nullptr, nullptr, nullptr, &changed_files);
+        }
+    }
+
+    if (diff) git_diff_free(diff);
+    git_tree_free(commit_tree);
+    return changed_files;
+}
+
 int main() {
     // Initialize ncurses
     initscr();
@@ -49,10 +94,11 @@ int main() {
     keypad(stdscr, TRUE);
     
     // Initialize color pairs
-    init_pair(1, COLOR_GREEN, COLOR_BLACK);  // For headers
-    init_pair(2, COLOR_CYAN, COLOR_BLACK);   // For highlights
-    init_pair(3, COLOR_YELLOW, COLOR_BLACK); // For commit IDs
-    init_pair(4, COLOR_WHITE, COLOR_BLACK);  // For normal text
+    init_pair(1, COLOR_GREEN, COLOR_BLACK);   // For headers
+    init_pair(2, COLOR_CYAN, COLOR_BLACK);    // For highlights
+    init_pair(3, COLOR_YELLOW, COLOR_BLACK);  // For commit IDs
+    init_pair(4, COLOR_WHITE, COLOR_BLACK);   // For normal text
+    init_pair(5, COLOR_RED, COLOR_BLACK);     // For file changes
 
     vector<CommitInfo> commitList;
     git_libgit2_init();
@@ -99,7 +145,6 @@ int main() {
     wattroff(files_changed, COLOR_PAIR(1));
     wrefresh(files_changed);
 
-
     // Open repository and initialize walker
     int error = git_repository_open(&repo, "/Users/anshul/interviewer/");
     if (error < 0) {
@@ -128,6 +173,7 @@ int main() {
             info.email = git_commit_author(commit)->email;
             info.commit_time = git_commit_time(commit);
             info.commit_id = git_oid_tostr_s(&oid);
+            info.changed_files = get_changed_files(repo, commit);  // Get changed files
             commitList.push_back(info);
         }
         commit_message_count++;
@@ -159,12 +205,12 @@ int main() {
 
         // Display commit messages
         for (int i = starting_line; i < starting_line + lines_to_display && i < commit_message_count; i++) {
-            string truncated_message = truncate(commitList[i].message, maxX - 6);
+            string truncated_message = truncate(commitList[i].message, maxX/2 - 6);
             mvwprintw(win, i - starting_line + 1, 2, "%s", truncated_message.c_str());
         }
 
         // Highlight selected commit
-        mvwchgat(win, cursor_position, 1, maxX - 4, A_REVERSE, 2, NULL);
+        mvwchgat(win, cursor_position, 1, maxX/2 - 4, A_REVERSE, 2, NULL);
         
         // Refresh commit info window
         werase(commit_info_window);
@@ -195,7 +241,7 @@ int main() {
                  format_time(selected_commit.commit_time).c_str());
 
         // Draw separator
-        draw_horizontal_line(commit_info_window, 5, 1, maxX - 4);
+        draw_horizontal_line(commit_info_window, 5, 1, maxX/2 - 4);
 
         wattron(commit_info_window, COLOR_PAIR(2));
         mvwprintw(commit_info_window, 6, 2, "Message:");
@@ -215,8 +261,27 @@ int main() {
             mvwprintw(commit_info_window, line, 4, "%s", msg.c_str());
         }
 
-        // Refresh windows
+        // Refresh files changed window
+        werase(files_changed_win);
+        box(files_changed_win, 0, 0);
+        wattron(files_changed_win, COLOR_PAIR(1));
+        mvwprintw(files_changed_win, 0, 2, "[ Files Changed ]");
+        wattroff(files_changed_win, COLOR_PAIR(1));
+
+        // Display changed files
+        wattron(files_changed_win, COLOR_PAIR(5));
+        mvwprintw(files_changed_win, 2, 2, "Files modified in this commit:");
+        wattroff(files_changed_win, COLOR_PAIR(5));
+        
+        int files_line = 4;
+        for (const string& file : selected_commit.changed_files) {
+            string truncated_file = truncate(file, maxX/2 - 6);
+            mvwprintw(files_changed_win, files_line++, 2, "%s", truncated_file.c_str());
+        }
+
+        // Refresh all windows
         wrefresh(commit_info_window);
+        wrefresh(files_changed_win);
         wrefresh(win);
 
         // Handle keyboard input
