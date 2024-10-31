@@ -144,9 +144,15 @@ int main() {
     mvwprintw(status_bar, 0, 0, " [^/j]Up [v/k]Down [q]Quit | Total Commits: %d", commit_message_count);
     wattroff(status_bar, COLOR_PAIR(2));
     wrefresh(status_bar);
+    
 
-
+    int files_starting_line = 0;
+    int files_cursor_position = 1;
+    int files_changed_lines_to_display = maxY/3-2;
     int window_flag = 0;
+
+
+    vector<string> file_changed_list;
     // Main program loop
     while (1) {
         cursor_position = max(min(cursor_position, commit_window_size - 2), 1);
@@ -168,7 +174,14 @@ int main() {
         // Highlight selected commit
         if (window_flag == 0){
           mvwchgat(win, cursor_position, 1, maxX - 4, A_REVERSE, 2, NULL);
-        } 
+        }
+
+        box(win, 0, 0);
+        wattron(win, COLOR_PAIR(1));
+        mvwprintw(win, 0, 2, "[ Commit History ]");
+        wattroff(win, COLOR_PAIR(1));
+        wrefresh(win);
+
         // Refresh commit info window
         werase(commit_info_window);
         box(commit_info_window, 0, 0);
@@ -256,7 +269,7 @@ int main() {
                         error = git_diff_tree_to_tree(&diff, repo, parent_tree, current_tree, NULL);
                         
                         if (error == 0) {
-                            vector<string> file_changed_list;
+                            file_changed_list.clear();
                             size_t num_deltas = git_diff_num_deltas(diff);
                             
                             for (size_t i = 0; i < num_deltas; ++i) {
@@ -270,13 +283,16 @@ int main() {
                                 }
                                 file_changed_list.push_back(status + delta->new_file.path);
                             }
-                            
-                            // Display files
-                            int current_y_files_changed = 1;
-                            for (const auto& s : file_changed_list) {
-                                mvwprintw(files_changed, current_y_files_changed++, 2, "%s", s.c_str());
-                            }
+                           
+                            files_cursor_position = max(min(files_cursor_position, files_changed_lines_to_display), 1);
+                            files_starting_line = max(min(files_starting_line, (int)file_changed_list.size() - files_changed_lines_to_display), 0);
 
+                            int current_y_files_changed = 1;
+                            for (int i = files_starting_line; 
+                                 i < files_starting_line + files_changed_lines_to_display && i < file_changed_list.size(); 
+                                 i++) {
+                                mvwprintw(files_changed, current_y_files_changed++, 2, "%s", file_changed_list[i].c_str());
+                            }
                         }
                     }
                 }
@@ -284,16 +300,17 @@ int main() {
                 // For initial commit, show all files as added
                 error = git_diff_tree_to_tree(&diff, repo, NULL, current_tree, NULL);
                 if (error == 0) {
-                    vector<string> file_changed_list;
+                    file_changed_list.clear();
                     size_t num_deltas = git_diff_num_deltas(diff);
                     for (size_t i = 0; i < num_deltas; ++i) {
                         const git_diff_delta* delta = git_diff_get_delta(diff, i);
                         file_changed_list.push_back("[A] " + string(delta->new_file.path));
                     }
                     
+
                     int current_y_files_changed = 1;
-                    for (const auto& s : file_changed_list) {
-                        mvwprintw(files_changed, current_y_files_changed++, 2, "%s", s.c_str());
+                    for (int i=0; i<file_changed_list.size() && i<=files_changed_lines_to_display; i++) {
+                        mvwprintw(files_changed, current_y_files_changed++, 2, "%s", file_changed_list[i].c_str());
                     }
                 }
             }
@@ -305,45 +322,72 @@ int main() {
         if (parent_tree) git_tree_free(parent_tree);
         if (current_commit) git_commit_free(current_commit);
         if (parent_commit) git_commit_free(parent_commit);
-        
+         
         if (window_flag == 1) {
-            mvwchgat(files_changed, 1, 1, maxX/2 - 3, A_REVERSE, 2, NULL);
-        
-        }
-
+            mvwchgat(files_changed, files_cursor_position, 1, maxX/2 - 3, A_REVERSE, 2, NULL);
+        }       
+     
         box(files_changed, 0, 0);
+        wattron(files_changed, COLOR_PAIR(1));
+        mvwprintw(files_changed, 0, 2, "[ Files Changed ]");
+        wattroff(files_changed, COLOR_PAIR(1));
         wrefresh(files_changed);
 
-        
-        // Handle keyboard input
+       // Handle keyboard input
         int ch = getch();
         
         if(ch == '\t'){
           window_flag++;
           if(window_flag > 1) window_flag = 0;
+          if (window_flag == 1){
+            files_starting_line = 0;
+            files_cursor_position = 1;
+            files_changed_lines_to_display = maxY/3-2;
+          }
         }
 
+        
         if (ch == 'q') {
             break;
         } else if (ch == KEY_DOWN || ch == 'k') {
-            if (commit_info_window_count < commit_message_count - 1) {
-                commit_info_window_count++;
-                if (cursor_position < lines_to_display) {
-                    cursor_position++;
-                } else if (starting_line + lines_to_display < commit_message_count) {
-                    starting_line++;
+            if (window_flag == 0) {
+                if (commit_info_window_count < commit_message_count - 1) {
+                    commit_info_window_count++;
+                    if (cursor_position < lines_to_display) {
+                        cursor_position++;
+                    } else if (starting_line + lines_to_display < commit_message_count) {
+                        starting_line++;
+                    }
+                }
+            } else if (window_flag == 1) {
+                if (files_cursor_position < files_changed_lines_to_display && 
+                    files_starting_line + files_cursor_position < file_changed_list.size()) {
+                    files_cursor_position++;
+                } else if (files_starting_line + files_changed_lines_to_display < file_changed_list.size()) {
+                    files_starting_line++;
                 }
             }
         } else if (ch == KEY_UP || ch == 'j') {
-            if (commit_info_window_count > 0) {
-                commit_info_window_count--;
-                if (cursor_position > 1) {
-                    cursor_position--;
-                } else if (starting_line > 0) {
-                    starting_line--;
+            if (window_flag == 0) {
+                if (commit_info_window_count > 0) {
+                    commit_info_window_count--;
+                    if (cursor_position > 1) {
+                        cursor_position--;
+                    } else if (starting_line > 0) {
+                        starting_line--;
+                    }
+                }
+            } else if (window_flag == 1) {
+                if (files_cursor_position > 1) {
+                    files_cursor_position--;
+                } else if (files_starting_line > 0) {
+                    files_starting_line--;
                 }
             }
         }
+
+
+
     }
 
     // Cleanup
