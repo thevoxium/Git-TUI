@@ -6,164 +6,124 @@ A terminal-based user interface for exploring Git repositories, allowing you to 
 
 ![Git TUI Application Interface](img/app_image.png)
 
-*The interface shows commit history (left top), commit details (left bottom), changed files (right top), and diff view (right bottom)*
 
 ## Features
 
-- Interactive commit history browser
-- Detailed commit information display
-- File change tracking for each commit
-- Diff viewer with syntax highlighting
-- Multi-window interface with keyboard navigation
-- Support for large repositories
-- Color-coded changes in diff view
+- **Interactive Commit History**: Browse through all commits in your repository with commit messages and timestamps
+- **Detailed Commit Information**: View complete commit details including author, date, and full commit message
+- **File Change Tracking**: See all files modified in each commit with their status (Added, Modified, Deleted)
+- **Interactive Diff Viewer**: Examine the exact changes made to each file with syntax highlighting
+- **Keyboard Navigation**: Easy navigation between different views using keyboard shortcuts
+- **Scrollable Windows**: All views support scrolling for handling large amounts of content
 
-## Prerequisites
+## Requirements
 
-To build and run this application, you need the following dependencies:
+- C++ compiler (g++)
+- libgit2 (For Git operations)
+- ncurses (For terminal UI)
+- Git repository to browse
 
-- C++ compiler (g++ or clang++)
-- libgit2 (for Git operations)
-- ncurses (for terminal UI)
-- Git repository to explore
-
-### Installing Dependencies
-
-#### macOS (using Homebrew):
+### macOS Dependencies
 ```bash
-brew install libgit2 ncurses
+brew install libgit2
+brew install ncurses
 ```
 
-#### Ubuntu/Debian:
+### Linux Dependencies
 ```bash
+# Ubuntu/Debian
 sudo apt-get install libgit2-dev libncurses5-dev
-```
 
-#### Fedora/RHEL:
-```bash
+# Fedora
 sudo dnf install libgit2-devel ncurses-devel
+
+# Arch Linux
+sudo pacman -S libgit2 ncurses
 ```
 
-## Building the Application
+## Installation
 
-To compile the application, use the following command:
-
+1. Clone the repository:
 ```bash
-g++ -o tui main.cpp -I/opt/homebrew/opt/libgit2/include -L/opt/homebrew/opt/libgit2/lib -lncurses -lgit2
+git clone [your-repository-url]
+cd [repository-name]
 ```
 
-Note: The include and library paths might need to be adjusted based on your system's configuration.
+2. Run the build script:
+```bash
+chmod +x build.sh
+./build.sh
+```
+
+This will:
+- Compile the program
+- Create a `~/bin` directory if it doesn't exist
+- Copy the executable to `~/bin`
+- Make it accessible from anywhere in your system
+
+3. Add the following to your shell configuration file (`~/.zshrc` or `~/.bashrc`):
+```bash
+export PATH="$HOME/bin:$PATH"
+alias gt='git-tui $(git rev-parse --show-toplevel)'
+```
+
+4. Reload your shell configuration:
+```bash
+source ~/.zshrc  # or source ~/.bashrc
+```
 
 ## Usage
 
-Run the compiled application by providing the path to a Git repository:
+### Starting the Browser
 
+There are several ways to start the Git TUI browser:
+
+1. From any directory:
 ```bash
-./tui /path/to/git/repository
+git-tui /path/to/repository
 ```
 
-### Navigation Controls
+2. From within a Git repository (if you set up the alias):
+```bash
+gt
+```
 
-The interface is divided into three main panels that can be navigated using the following controls:
+### Navigation
 
-- `Tab`: Switch between panels (Commit History → Files Changed → Diff View)
-- `↑/j`: Move cursor up/previous item
-- `↓/k`: Move cursor down/next item
-- `q`: Quit the application
+The interface is divided into four main panels:
+- **Commit History** (Top Left): Lists all commits
+- **Commit Details** (Bottom Left): Shows detailed information about the selected commit
+- **Files Changed** (Top Right): Lists all files modified in the selected commit
+- **Diff View** (Bottom Right): Shows the diff for the selected file
 
-### Panels Overview
+#### Keyboard Controls
 
-1. **Commit History** (Left Upper Panel)
-   - Displays commit messages in chronological order
-   - Highlights the currently selected commit
+- **Tab**: Cycle between panels (Commit History → Files Changed → Diff View)
+- **Up Arrow** or **j**: Move cursor up
+- **Down Arrow** or **k**: Move cursor down
+- **q**: Quit the application
 
-2. **Commit Details** (Left Lower Panel)
-   - Shows detailed information about the selected commit:
-     - Commit ID
-     - Author name and email
-     - Commit date and time
-     - Full commit message
+### Workflow
 
-3. **Files Changed** (Right Upper Panel)
-   - Lists all files modified in the selected commit
-   - Indicates the type of change:
-     - [A] Added files
-     - [M] Modified files
-     - [D] Deleted files
+1. Navigate through commits in the Commit History panel
+2. Select a commit to view its details and changed files
+3. Navigate to the Files Changed panel to select a specific file
+4. View the file's diff in the Diff View panel
+5. Scroll through the diff to examine changes
 
-4. **Diff View** (Right Lower Panel)
-   - Shows the detailed changes for the selected file
-   - Color-coded diff:
-     - Green: Added lines
-     - Cyan: Removed lines
-     - Yellow: File and chunk headers
+## Building from Source
 
-## Features in Detail
+If you want to build the program manually instead of using the build script:
 
-### Commit Browser
-- Displays a scrollable list of commits
-- Shows truncated commit messages for better readability
-- Highlights the currently selected commit
+```bash
+g++ -o git-tui main.cpp \
+    -I/opt/homebrew/opt/libgit2/include \
+    -L/opt/homebrew/opt/libgit2/lib \
+    -lncurses -lgit2
+```
 
-### Commit Information
-- Complete commit metadata
-- Full commit message display
-- Author information with email
-- Formatted timestamp
 
-### File Changes
-- List of all files affected in the commit
-- Change type indicators
-- Scrollable file list for commits with many changes
 
-### Diff Viewer
-- Side-by-side diff display
-- Syntax highlighting for changes
-- Context lines around changes
-- Scrollable diff view for large changes
+## Support
 
-## Error Handling
-
-The application includes error handling for common scenarios:
-- Invalid repository paths
-- Repository access issues
-- Memory allocation failures
-- Navigation bounds checking
-
-## Limitations
-
-- The interface is designed for terminal windows with a minimum size
-- Very long commit messages or file paths may be truncated
-- Large diffs might require scrolling to view completely
-
-## Contributing
-
-Feel free to contribute to this project by:
-1. Forking the repository
-2. Creating a feature branch
-3. Submitting a pull request
-
-## License
-
-This project is open source and available under the MIT License.
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Compilation Errors**
-   - Verify that all dependencies are installed
-   - Check include and library paths in compilation command
-   - Ensure libgit2 version compatibility
-
-2. **Runtime Errors**
-   - Confirm the repository path exists and is valid
-   - Check repository permissions
-   - Verify terminal window size is sufficient
-
-3. **Display Issues**
-   - Ensure terminal supports color output
-   - Check terminal size requirements
-   - Verify ncurses compatibility
-
-For additional issues, please check the project's issue tracker or submit a new issue.
+If you encounter any issues or have questions, please file an issue on the GitHub repository.
